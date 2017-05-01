@@ -18,6 +18,10 @@
 
 #include <glog/logging.h>
 
+#include <mesos/appc/spec.hpp>
+
+#include <mesos/secret/fetcher.hpp>
+
 #include <process/collect.hpp>
 #include <process/defer.hpp>
 #include <process/dispatch.hpp>
@@ -27,8 +31,6 @@
 #include <stout/hashmap.hpp>
 #include <stout/os.hpp>
 #include <stout/path.hpp>
-
-#include <mesos/appc/spec.hpp>
 
 #include "slave/containerizer/mesos/provisioner/appc/cache.hpp"
 #include "slave/containerizer/mesos/provisioner/appc/fetcher.hpp"
@@ -96,7 +98,9 @@ private:
 };
 
 
-Try<Owned<slave::Store>> Store::create(const Flags& flags)
+Try<Owned<slave::Store>> Store::create(
+    const Flags& flags,
+    const Option<SecretFetcher*>& secretFetcher)
 {
   Try<Nothing> mkdir = os::mkdir(paths::getImagesDir(flags.appc_store_dir));
   if (mkdir.isError()) {

@@ -22,6 +22,8 @@
 
 #include <mesos/docker/spec.hpp>
 
+#include <mesos/secret/fetcher.hpp>
+
 #include <process/collect.hpp>
 #include <process/defer.hpp>
 #include <process/dispatch.hpp>
@@ -146,7 +148,9 @@ static Try<Nothing> validateBackend(
 }
 
 
-Try<Owned<Provisioner>> Provisioner::create(const Flags& flags)
+Try<Owned<Provisioner>> Provisioner::create(
+    const Flags& flags,
+    const Option<SecretFetcher*>& secretFetcher)
 {
   const string _rootDir = slave::paths::getProvisionerDir(flags.work_dir);
 

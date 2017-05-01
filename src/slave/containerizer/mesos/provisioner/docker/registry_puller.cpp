@@ -16,6 +16,8 @@
 
 #include <glog/logging.h>
 
+#include <mesos/secret/fetcher.hpp>
+
 #include <process/collect.hpp>
 #include <process/defer.hpp>
 #include <process/dispatch.hpp>
@@ -27,6 +29,8 @@
 #include <stout/os/write.hpp>
 
 #include "common/command_utils.hpp"
+
+#include "secret/fetcher.hpp"
 
 #include "uri/schemes/docker.hpp"
 
@@ -62,7 +66,10 @@ public:
   RegistryPullerProcess(
       const string& _storeDir,
       const http::URL& _defaultRegistryUrl,
-      const Shared<uri::Fetcher>& _fetcher);
+      const Shared<uri::Fetcher>& _fetcher,
+      SecretFetcher* _secretFetcher);
+
+  ~RegistryPullerProcess();
 
   Future<vector<string>> pull(
       const spec::ImageReference& reference,
@@ -98,12 +105,14 @@ private:
   const http::URL defaultRegistryUrl;
 
   Shared<uri::Fetcher> fetcher;
+  SecretFetcher* secretFetcher;
 };
 
 
 Try<Owned<Puller>> RegistryPuller::create(
     const Flags& flags,
-    const Shared<uri::Fetcher>& fetcher)
+    const Shared<uri::Fetcher>& fetcher,
+    const Option<SecretFetcher*>& secretFetcher)
 {
   Try<http::URL> defaultRegistryUrl = http::URL::parse(flags.docker_registry);
   if (defaultRegistryUrl.isError()) {
@@ -119,7 +128,8 @@ Try<Owned<Puller>> RegistryPuller::create(
       new RegistryPullerProcess(
           flags.docker_store_dir,
           defaultRegistryUrl.get(),
-          fetcher));
+          fetcher,
+          secretFetcher.getOrElse(new DefaultSecretFetcher())));
 
   return Owned<Puller>(new RegistryPuller(process));
 }
@@ -156,11 +166,19 @@ Future<vector<string>> RegistryPuller::pull(
 RegistryPullerProcess::RegistryPullerProcess(
     const string& _storeDir,
     const http::URL& _defaultRegistryUrl,
-    const Shared<uri::Fetcher>& _fetcher)
+    const Shared<uri::Fetcher>& _fetcher,
+    SecretFetcher* _secretFetcher)
   : ProcessBase(process::ID::generate("docker-provisioner-registry-puller")),
     storeDir(_storeDir),
     defaultRegistryUrl(_defaultRegistryUrl),
-    fetcher(_fetcher) {}
+    fetcher(_fetcher),
+    secretFetcher(_secretFetcher) {}
+
+
+RegistryPullerProcess::~RegistryPullerProcess()
+{
+  delete secretFetcher;
+}
 
 
 static spec::ImageReference normalize(
