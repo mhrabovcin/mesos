@@ -81,9 +81,15 @@ private:
   Future<vector<string>> _pull(
       const spec::ImageReference& reference,
       const string& directory,
-      const string& backend);
+      const string& backend,
+      const Option<Secret::Value>& config = None());
 
   Future<vector<string>> __pull(
+      const spec::ImageReference& reference,
+      const string& directory,
+      const string& backend);
+
+  Future<vector<string>> ___pull(
     const spec::ImageReference& reference,
     const string& directory,
     const spec::v2::ImageManifest& manifest,
@@ -220,10 +226,30 @@ static spec::ImageReference normalize(
 
 
 Future<vector<string>> RegistryPullerProcess::pull(
-    const spec::ImageReference& _reference,
+    const spec::ImageReference& reference,
     const string& directory,
     const string& backend,
     const Option<Secret>& config)
+{
+  if (config.isNone()) {
+    return _pull(reference, directory, backend);
+  }
+
+  return secretFetcher->fetch(config.get())
+    .then(defer(self(),
+                &Self::_pull,
+                reference,
+                directory,
+                backend,
+                lambda::_1));
+}
+
+
+Future<vector<string>> RegistryPullerProcess::_pull(
+    const spec::ImageReference& _reference,
+    const string& directory,
+    const string& backend,
+    const Option<Secret::Value>& config)
 {
   spec::ImageReference reference = normalize(_reference, defaultRegistryUrl);
 
@@ -271,11 +297,11 @@ Future<vector<string>> RegistryPullerProcess::pull(
           << "' to '" << directory << "'";
 
   return fetcher->fetch(manifestUri, directory)
-    .then(defer(self(), &Self::_pull, reference, directory, backend));
+    .then(defer(self(), &Self::__pull, reference, directory, backend));
 }
 
 
-Future<vector<string>> RegistryPullerProcess::_pull(
+Future<vector<string>> RegistryPullerProcess::__pull(
     const spec::ImageReference& reference,
     const string& directory,
     const string& backend)
@@ -301,7 +327,7 @@ Future<vector<string>> RegistryPullerProcess::_pull(
 
   return fetchBlobs(reference, directory, manifest.get(), backend)
     .then(defer(self(),
-                &Self::__pull,
+                &Self::___pull,
                 reference,
                 directory,
                 manifest.get(),
@@ -310,7 +336,7 @@ Future<vector<string>> RegistryPullerProcess::_pull(
 }
 
 
-Future<vector<string>> RegistryPullerProcess::__pull(
+Future<vector<string>> RegistryPullerProcess::___pull(
     const spec::ImageReference& reference,
     const string& directory,
     const spec::v2::ImageManifest& manifest,
