@@ -692,7 +692,7 @@ void HealthCheckerProcess::___nestedCommandHealthCheck(
     return;
   }
 
-  waitNestedContainer(checkContainerId)
+  waitNestedContainer(checkContainerId, 3)
     .onFailed([promise](const string& failure) {
       promise->fail(
           "Unable to get the exit code: " + failure);
@@ -736,7 +736,7 @@ void HealthCheckerProcess::nestedCommandHealthCheckFailure(
     // the beginning of the next check. In order to prevent a failure,
     // the promise should only be completed once we're sure that the
     // container has terminated.
-    waitNestedContainer(checkContainerId)
+    waitNestedContainer(checkContainerId, 0)
       .onAny([failure, promise](const Future<Option<int>>&) {
         // We assume that once `WaitNestedContainer` returns,
         // irrespective of whether the response contains a failure, the
@@ -764,7 +764,8 @@ void HealthCheckerProcess::nestedCommandHealthCheckFailure(
 
 
 Future<Option<int>> HealthCheckerProcess::waitNestedContainer(
-    const ContainerID& containerId)
+    const ContainerID& containerId,
+    int maxRetries)
 {
   agent::Call call;
   call.set_type(agent::Call::WAIT_NESTED_CONTAINER);
@@ -792,15 +793,24 @@ Future<Option<int>> HealthCheckerProcess::waitNestedContainer(
           stringify(containerId) + "' failed: " + future.failure());
     })
     .then(defer(self(),
-                &Self::_waitNestedContainer, containerId, lambda::_1));
+                &Self::_waitNestedContainer,
+                containerId,
+                maxRetries,
+                lambda::_1));
 }
 
 
 Future<Option<int>> HealthCheckerProcess::_waitNestedContainer(
     const ContainerID& containerId,
+    int maxRetries,
     const Response& httpResponse)
 {
-  if (httpResponse.code != process::http::Status::OK) {
+  if (httpResponse.code == process::http::Status::NOT_FOUND &&
+      maxRetries > 0) {
+    LOG(WARNING) << "Received 404 while waiting on health check container '"
+                 << containerId << "', retrying";
+    return waitNestedContainer(containerId, maxRetries - 1);
+  } else if (httpResponse.code != process::http::Status::OK) {
     return Failure(
         "Received '" + httpResponse.status + "' (" + httpResponse.body +
         ") while waiting on health check container '" +

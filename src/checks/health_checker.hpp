@@ -192,10 +192,12 @@ private:
    * @return The exit status as returned by the Agent.
    */
   process::Future<Option<int>> waitNestedContainer(
-      const ContainerID& containerId);
+      const ContainerID& containerId,
+      int maxRetries);
 
   process::Future<Option<int>> _waitNestedContainer(
       const ContainerID& containerId,
+      int maxRetries,
       const process::http::Response& httpResponse);
 
   process::Future<Nothing> httpHealthCheck();
