@@ -593,6 +593,9 @@ void reinitialize()
   if (!ssl_flags->enable_tls_v1_2) { ssl_options |= SSL_OP_NO_TLSv1_2; }
 
   SSL_CTX_set_options(ctx, ssl_options);
+
+  // TODO(mh): Testing enabling auto curve selection
+  SSL_CTX_set_ecdh_auto(ctx, 1);
 }
 
 
