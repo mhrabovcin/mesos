@@ -115,6 +115,11 @@ Flags::Flags()
       "AES128-SHA:AES256-SHA:RC4-SHA:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA:"
       "DHE-RSA-AES256-SHA:DHE-DSS-AES256-SHA");
 
+  add(&Flags::ecdh_curve,
+      "ecdh_curve",
+      "Specifies a curve for ECDHE ciphers",
+      "auto");
+
   // We purposely don't have a flag for SSLv2. We do this because most
   // systems have disabled SSLv2 at compilation due to having so many
   // security vulnerabilities.
@@ -278,6 +283,96 @@ string error_string(unsigned long code)
   }
 
   return s;
+}
+
+
+// Initializes ECDH curve OpenSSL setting for given context.
+// Taken from https://github.com/nginx/nginx/blob/bfe36ba3185a477d2f8ce120577308646173b736/src/event/ngx_event_openssl.c#L1080-L1161
+void reinitialize_ecdh_curve(SSL_CTX* ctx, Flags* ssl_flags)
+{
+#if OPENSSL_VERSION_NUMBER >= 0x0090800fL
+#ifndef OPENSSL_NO_ECDH
+
+  /*
+    * Elliptic-Curve Diffie-Hellman parameters are either "named curves"
+    * from RFC 4492 section 5.1.1, or explicitly described curves over
+    * binary fields.  OpenSSL only supports the "named curves", which provide
+    * maximum interoperability.
+    */
+
+#if (defined SSL_CTX_set1_curves_list || defined SSL_CTRL_SET_CURVES_LIST)
+
+  /*
+    * OpenSSL 1.0.2+ allows configuring a curve list instead of a single
+    * curve previously supported.  By default an internal list is used,
+    * with prime256v1 being preferred by server in OpenSSL 1.0.2b+
+    * and X25519 in OpenSSL 1.1.0+.
+    *
+    * By default a curve preferred by the client will be used for
+    * key exchange.  The SSL_OP_CIPHER_SERVER_PREFERENCE option can
+    * be used to prefer server curves instead, similar to what it
+    * does for ciphers.
+    */
+
+  SSL_CTX_set_options(ctx, SSL_OP_SINGLE_ECDH_USE);
+
+#if SSL_CTRL_SET_ECDH_AUTO
+
+  /* not needed in OpenSSL 1.1.0+ */
+  SSL_CTX_set_ecdh_auto(ctx, 1);
+
+#endif
+
+  if (ssl_flags->ecdh_curve == "auto") {
+    return;
+  }
+
+  if (SSL_CTX_set1_curves_list(
+          ctx,
+          ssl_flags->ecdh_curve.c_str()) != 1) {
+    unsigned long error = ERR_get_error();
+    EXIT(EXIT_FAILURE)
+      << "Could not load ecdh curve '" << ssl_flags->ecdh_curve << "' "
+      << "(OpenSSL error #" << stringify(error) << "): " << error_string(error);
+  }
+
+  VLOG(2) << "Using ecdh curve: " << ssl_flags->ecdh_curve;
+
+#else
+
+  int         nid;
+  std::string curve;
+  EC_KEY      *ecdh;
+
+  if (ssl_flags->ecdh_curve == "auto") {
+    curve = "prime256v1";
+  } else {
+    curve = ssl_flags->ecdh_curve;
+  }
+
+  nid = OBJ_sn2nid(curve.c_str());
+  if (nid == 0) {
+    EXIT(EXIT_FAILURE)
+      << 'OpenSSL OBJ_sn2nid("' << curve << '") failed: unknown curve';
+  }
+
+  ecdh = EC_KEY_new_by_curve_name(nid);
+  if (ecdh == nullptr) {
+    EXIT(EXIT_FAILURE)
+      << 'OpenSSL EC_KEY_new_by_curve_name("' << curve << '") failed';
+  }
+
+  SSL_CTX_set_options(ctx, SSL_OP_SINGLE_ECDH_USE);
+
+  SSL_CTX_set_tmp_ecdh(ctx, ecdh);
+
+  EC_KEY_free(ecdh);
+
+  VLOG(2) << "Using ecdh curve: " << ssl_flags->ecdh_curve;
+
+#endif
+#endif
+#endif
 }
 
 
@@ -594,10 +689,8 @@ void reinitialize()
 
   SSL_CTX_set_options(ctx, ssl_options);
 
-  // TODO(mh): Testing enabling auto curve selection
-  SSL_CTX_set_ecdh_auto(ctx, 1);
+  reinitialize_ecdh_curve(ctx, ssl_flags);
 }
-
 
 void initialize()
 {
