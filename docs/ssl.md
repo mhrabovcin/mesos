@@ -74,6 +74,9 @@ The above switches enable / disable the specified protocols. By default only TLS
 _SSLv2 is disabled completely because modern versions of OpenSSL disable it using multiple compile time configuration options._
 #<a name="Dependencies"></a>Dependencies
 
+#### LIBPROCESS_SSL_ECDH_CURVE=(auto|name of ec curve) [default=auto]
+The name of elliptic curve that should be used for ECDHE based cipher suites. List of valid values depends on OpenSSL version. Default value `auto` leaves up to OpenSSL to pick curve in versions `1.1.0+` and uses `prime256v1` in versions `1.0.2` and lower. OpenSSL version `1.1.0` allows to specify multiple curves in format `prime256v1:secp384r1`.
+
 ### libevent
 We require the OpenSSL support from libevent. The suggested version of libevent is [`2.0.22-stable`](https://github.com/libevent/libevent/releases/tag/release-2.0.22-stable). As new releases come out we will try to maintain compatibility.
 
